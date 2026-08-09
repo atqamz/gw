@@ -1,0 +1,14 @@
+[package]
+name = "gw"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Profile-aware Google Workspace CLI for humans and agents"
+repository = "https://github.com/atqamz/gw"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+lto = true
+strip = true

@@ -139,6 +139,8 @@ nix flake check
 
 The test suite uses a fake `gws` shell script, so isolation and pass-through are verified without Google credentials.
 
+Releases are automated by [release-please](https://github.com/googleapis/release-please); merging the release PR tags a new version and updates `CHANGELOG.md`.
+
 ## Credits
 
 All Google Workspace functionality comes from [`googleworkspace/cli`](https://github.com/googleworkspace/cli), Apache-2.0.

@@ -18,7 +18,7 @@ That matters most for AI agents. Separate Google accounts are separate trust bou
 
 - Each profile gets its own `GOOGLE_WORKSPACE_CLI_CONFIG_DIR`, so OAuth client config, encrypted credentials, token cache, and other cached runtime state never mix.
 - There is no default profile, no `GW_PROFILE` fallback, and no `--all` mode. A missing profile is an error.
-- `gw` runs `gws` with all three standard streams inherited, so stdin, stdout, stderr, streaming, interactivity, and binary output are untouched. Exit codes are propagated unchanged, and a child killed by a signal is reported as `128 + signal`.
+- `gw` runs `gws` with all three standard streams inherited, preserving stdin, stdout, streaming, interactivity, and binary output. `gw` may add its own suggestion reminder to stderr. Exit codes are propagated unchanged, and a child killed by a signal is reported as `128 + signal`.
 
 `gw` implements no Google API, no OAuth, no HTTP client, no daemon, and no output transformation.
 

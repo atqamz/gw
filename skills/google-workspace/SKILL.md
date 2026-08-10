@@ -30,7 +30,7 @@ Never invoke `gws` directly. Raw `gws` has no profile isolation, so it can silen
 6. Reads may query several profiles independently when the user asked for that.
 7. Preserve provenance. When results from more than one profile are combined, label every item with the profile and account it came from.
 8. Prefer creating a Gmail draft when the user asks to draft, prepare, or review mail. Send only when the user asked to send.
-9. Inspect `--help` or `gws schema` rather than guessing command syntax.
+9. Inspect `gw <profile> --help` or `gw <profile> schema` rather than guessing command syntax.
 10. Use `--dry-run` first where the command supports it, especially for deletes, bulk label changes, calendar changes, and sharing changes.
 11. Never print credentials, OAuth tokens, client IDs, client secrets, encryption keys, or any file under a profile's `gws` config directory. Never read that directory to answer a question. Never run `gw <profile> auth export`; it prints decrypted credentials.
 
@@ -119,7 +119,7 @@ gw <profile> tasks tasklists list
 gw <profile> calendar events list --params '{"calendarId":"primary"}'
 ```
 
-Prefer a helper when one exists. Confirm any command with `--help` or `gws schema <service.resource.method>` before running it.
+Prefer a helper when one exists. Confirm any command with `gw <profile> --help` or `gw <profile> schema <service.resource.method>` before running it.
 
 Useful global flags: `--dry-run`, `--format json|table|yaml|csv`, `--page-all`.
 

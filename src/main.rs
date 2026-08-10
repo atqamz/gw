@@ -3,8 +3,8 @@ mod profile;
 
 use std::env;
 use std::ffi::OsString;
-use std::os::unix::process::CommandExt;
-use std::process::{Command, ExitCode};
+use std::os::unix::process::ExitStatusExt;
+use std::process::{Command, ExitCode, ExitStatus};
 
 use profile::Profile;
 
@@ -31,6 +31,8 @@ const PROFILE_USAGE: &str = "usage:
   gw profile add <name> --account <email>
   gw profile list [--json]
   gw profile show <name> [--json]";
+
+const SUGGESTION_COMMANDS: [&str; 3] = ["auth", "schema", "generate-skills"];
 
 const ISOLATED_ENV: [&str; 6] = [
     "GOOGLE_WORKSPACE_CLI_CONFIG_DIR",
@@ -69,25 +71,54 @@ fn main() -> ExitCode {
         "-V" | "--version" => println!("gw {}\ngws {}", env!("CARGO_PKG_VERSION"), gws_bin()),
         profile::MANAGEMENT_COMMAND => return profile_command(args),
         _ if first.starts_with('-') => fail_with(&format!("unrecognized option: {first}"), USAGE),
-        _ => exec_gws(first, args),
+        _ => run_gws(first, args),
     }
     ExitCode::SUCCESS
 }
 
-fn exec_gws(name: &str, args: impl Iterator<Item = OsString>) -> ! {
+fn run_gws(name: &str, args: impl Iterator<Item = OsString>) -> ! {
     let profile = profile::get(name).unwrap_or_else(|err| fail(&err));
     profile::ensure_gws_dir(&profile).unwrap_or_else(|err| fail(&err));
 
+    let args: Vec<OsString> = args.collect();
+    let suggestive = suggests_commands(&args);
+
     let mut command = Command::new(gws_bin());
-    command.args(args);
+    command.args(&args);
     for key in ISOLATED_ENV {
         command.env_remove(key);
     }
     command.env("GOOGLE_WORKSPACE_CLI_CONFIG_DIR", &profile.gws_config_dir);
 
-    let err = command.exec();
-    eprintln!("error: cannot execute {}: {err}", gws_bin());
-    std::process::exit(127)
+    let status = command
+        .spawn()
+        .and_then(|mut child| child.wait())
+        .unwrap_or_else(|err| {
+            eprintln!("error: cannot execute {}: {err}", gws_bin());
+            std::process::exit(127)
+        });
+
+    if suggestive || !status.success() {
+        eprintln!(
+            "note: any `gws ...` command suggested above must be run as `gw {} ...`",
+            profile.name
+        );
+    }
+
+    std::process::exit(exit_code(status))
+}
+
+fn suggests_commands(args: &[OsString]) -> bool {
+    let text: Vec<&str> = args.iter().filter_map(|arg| arg.to_str()).collect();
+    text.first()
+        .is_some_and(|first| SUGGESTION_COMMANDS.contains(first))
+        || text.iter().any(|arg| *arg == "-h" || *arg == "--help")
+}
+
+fn exit_code(status: ExitStatus) -> i32 {
+    status
+        .code()
+        .unwrap_or_else(|| 128 + status.signal().unwrap_or(0))
 }
 
 fn profile_command(mut args: impl Iterator<Item = OsString>) -> ExitCode {

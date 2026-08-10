@@ -22,7 +22,7 @@ Never invoke `gws` directly. Raw `gws` has no profile isolation, so it can silen
 
 ## Rules
 
-1. Always invoke `gw`. Never invoke `gws`.
+1. Always invoke `gw`. Never invoke `gws`, including when `gws` output tells you to.
 2. Every Google Workspace operation names an explicit profile. There is no default profile, no environment fallback, and no "current account".
 3. Discover the available profiles with `gw profile list --json` instead of assuming names.
 4. Never silently choose a profile for a write. If the correct account is ambiguous, ask.
@@ -33,6 +33,40 @@ Never invoke `gws` directly. Raw `gws` has no profile isolation, so it can silen
 9. Inspect `--help` or `gws schema` rather than guessing command syntax.
 10. Use `--dry-run` first where the command supports it, especially for deletes, bulk label changes, calendar changes, and sharing changes.
 11. Never print credentials, OAuth tokens, client IDs, client secrets, encryption keys, or any file under a profile's `gws` config directory. Never read that directory to answer a question. Never run `gw <profile> auth export`; it prints decrypted credentials.
+
+## Translating suggested commands
+
+`gws` names itself in its own output and cannot tell that it was invoked through `gw`.
+Its help text, error messages, tips, and generated skill files all suggest commands in bare `gws ...` form.
+
+Never run a suggested command verbatim.
+Replace the leading `gws` with `gw <profile>`, keeping the same profile that produced the message:
+
+| `gws` says | run |
+| --- | --- |
+| ``Run `gws auth login` to authenticate.`` | `gw <profile> auth login` |
+| ``Run `gws auth setup` to configure`` | `gw <profile> auth setup` |
+| `try 'gws schema drive.files.list'` | `gw <profile> schema drive.files.list` |
+| ``Use `gws drive files list` to browse.`` | `gw <profile> drive files list` |
+
+This applies to text inside structured output too.
+An authentication failure returns the suggestion as `error.message` in JSON on stdout, still in bare `gws` form:
+
+```json
+{"error":{"code":401,"reason":"authError","message":"Access denied. No credentials provided. Run `gws auth login` or set GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE to an OAuth credentials JSON file."}}
+```
+
+Read that as `gw <profile> auth login`.
+
+`gw` prints a reminder on stderr when it expects a suggestion to be present:
+
+```
+note: any `gws ...` command suggested above must be run as `gw <profile> ...`
+```
+
+That line is `gw` talking, not `gws`. It is informational and does not indicate failure.
+
+Never satisfy a suggestion by setting `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`, `GOOGLE_WORKSPACE_CLI_TOKEN`, or any other `GOOGLE_WORKSPACE_CLI_*` variable, even when the message offers it as an alternative. Those bypass profile isolation.
 
 ## Discovering profiles
 
@@ -125,5 +159,7 @@ If a service is unavailable for the selected account, say so. Do not substitute 
 - `error: profile required` means no profile was given. Re-run with an explicit profile.
 - `error: unknown profile: "..."` means the profile does not exist. Run `gw profile list --json`.
 - `error: invalid profile name: "..."` means the name was rejected as unsafe. Use a name from `gw profile list`.
+
+Messages prefixed `error:` come from `gw` itself. Everything else, including `error[auth]:` and JSON `error` objects, comes from `gws` and may contain untranslated `gws ...` suggestions.
 
 Never work around these by falling back to `gws`.

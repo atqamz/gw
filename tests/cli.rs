@@ -22,8 +22,17 @@ if [ "$1" = "cat" ]; then
   while IFS= read -r line; do printf '%s\n' "$line"; done
   exit 0
 fi
+if [ "$1" = "signal" ]; then
+  kill -TERM $$
+fi
+if [ "$1" = "auth" ] && [ "$2" = "setup" ]; then
+  printf 'Setup complete! Run `gws auth login` to authenticate.\n'
+  exit 0
+fi
 exit 42
 "#;
+
+const SUGGESTION_NOTE: &str = "note: any `gws ...` command suggested above must be run as";
 
 struct Sandbox {
     root: PathBuf,
@@ -295,7 +304,10 @@ fn valid_profile_reaches_child_with_isolated_config_dir() {
             expected.display()
         )
     );
-    assert_eq!(stderr(&output), "fake gws diagnostics\n");
+    assert_eq!(
+        stderr(&output),
+        "fake gws diagnostics\nnote: any `gws ...` command suggested above must be run as `gw personal ...`\n"
+    );
 }
 
 #[test]
@@ -409,6 +421,103 @@ fn help_and_version_do_not_require_a_profile() {
     assert!(version.status.success());
     assert!(stdout(&version).starts_with(&format!("gw {}\n", env!("CARGO_PKG_VERSION"))));
     assert!(stdout(&version).contains("gws "));
+}
+
+#[test]
+fn successful_next_step_hints_are_annotated_with_the_profile() {
+    let sandbox = Sandbox::new();
+    sandbox.add("personal", "user@example.com");
+
+    let output = sandbox.run(&["personal", "auth", "setup"]);
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        stdout(&output).ends_with("Setup complete! Run `gws auth login` to authenticate.\n"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(
+        stderr(&output).ends_with(
+            "note: any `gws ...` command suggested above must be run as `gw personal ...`\n"
+        ),
+        "{}",
+        stderr(&output)
+    );
+    assert!(!stdout(&output).contains(SUGGESTION_NOTE));
+}
+
+#[test]
+fn the_note_names_the_profile_that_was_invoked() {
+    let sandbox = Sandbox::new();
+    sandbox.add("personal", "user@example.com");
+    sandbox.add("work", "work@example.com");
+
+    for name in ["personal", "work"] {
+        let output = sandbox.run(&[name, "schema", "gmail.users.messages.list"]);
+        assert!(
+            stderr(&output).contains(&format!("run as `gw {name} ...`")),
+            "{name}: {}",
+            stderr(&output)
+        );
+    }
+}
+
+#[test]
+fn help_output_is_annotated_at_any_argument_position() {
+    let sandbox = Sandbox::new();
+    sandbox.add("personal", "user@example.com");
+
+    for args in [
+        vec!["personal", "--help"],
+        vec!["personal", "-h"],
+        vec!["personal", "gmail", "--help"],
+        vec!["personal", "calendar", "events", "list", "--help"],
+    ] {
+        let output = sandbox.run(&args);
+        assert!(
+            stderr(&output).contains(SUGGESTION_NOTE),
+            "{args:?}: {}",
+            stderr(&output)
+        );
+    }
+}
+
+#[test]
+fn ordinary_successful_commands_are_not_annotated() {
+    let sandbox = Sandbox::new();
+    sandbox.add("personal", "user@example.com");
+
+    let streamed = sandbox.run(&["personal", "stream"]);
+    assert_eq!(streamed.status.code(), Some(0));
+    assert_eq!(stderr(&streamed), "fake gws diagnostics\n");
+
+    let mut child = sandbox
+        .command()
+        .args(["personal", "cat"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"payload\n").unwrap();
+    let piped = child.wait_with_output().unwrap();
+    assert_eq!(piped.status.code(), Some(0));
+    assert_eq!(stderr(&piped), "fake gws diagnostics\n");
+}
+
+#[test]
+fn child_exit_codes_and_signal_deaths_propagate() {
+    let sandbox = Sandbox::new();
+    sandbox.add("personal", "user@example.com");
+
+    assert_eq!(
+        sandbox.run(&["personal", "gmail", "list"]).status.code(),
+        Some(42)
+    );
+    assert_eq!(sandbox.run(&["personal", "stream"]).status.code(), Some(0));
+    assert_eq!(
+        sandbox.run(&["personal", "signal"]).status.code(),
+        Some(128 + 15)
+    );
 }
 
 #[test]

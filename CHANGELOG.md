@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/atqamz/gw/compare/gw-v0.1.0...v0.2.0) (2026-08-10)
+
+
+### Features
+
+* flag gws next-step suggestions as profile-scoped commands ([#10](https://github.com/atqamz/gw/issues/10)) ([d124790](https://github.com/atqamz/gw/commit/d1247900e1f8bc812ab996a902de5fda59b9b7e8))
+
 ## 0.1.0 (2026-08-09)
 
 

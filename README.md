@@ -18,7 +18,7 @@ That matters most for AI agents. Separate Google accounts are separate trust bou
 
 - Each profile gets its own `GOOGLE_WORKSPACE_CLI_CONFIG_DIR`, so OAuth client config, encrypted credentials, token cache, and other cached runtime state never mix.
 - There is no default profile, no `GW_PROFILE` fallback, and no `--all` mode. A missing profile is an error.
-- `gw` replaces itself with `gws` via `execve`, so stdin, stdout, stderr, exit codes, signals, streaming, and binary output are untouched.
+- `gw` runs `gws` with all three standard streams inherited, preserving stdin, stdout, streaming, interactivity, and binary output. `gw` may add its own suggestion reminder to stderr. Exit codes are propagated unchanged, and a child killed by a signal is reported as `128 + signal`.
 
 `gw` implements no Google API, no OAuth, no HTTP client, no daemon, and no output transformation.
 
@@ -87,6 +87,39 @@ error: profile required
 usage: gw <profile> <gws arguments...>
 ```
 
+### Reading `gws` suggestions
+
+`gws` names itself when it tells you what to run next, and it has no way to know it was invoked through `gw`.
+Every such suggestion has to be read with the profile put back in:
+
+| `gws` prints | run |
+| --- | --- |
+| ``Run `gws auth login` to authenticate.`` | `gw personal auth login` |
+| ``Run `gws auth setup` to configure`` | `gw personal auth setup` |
+| `try 'gws schema drive.files.list'` | `gw personal schema drive.files.list` |
+| ``Use `gws drive files list` to browse.`` | `gw personal drive files list` |
+
+Running the suggestion verbatim is not a harmless mistake.
+`gws` on `$PATH` is a different, unprofiled installation whose config directory is `~/.config/gws`, so the command would authenticate or write as whichever account happens to live there.
+
+To make that hard to miss, `gw` writes one line to stderr after `gws` exits, whenever `gws` is likely to have suggested something:
+
+```console
+$ gw personal auth setup
+...
+Setup complete! Run `gws auth login` to authenticate.
+note: any `gws ...` command suggested above must be run as `gw personal ...`
+```
+
+The note appears when the child exits non-zero, when the command is `auth`, `schema`, or `generate-skills`, and when `--help` or `-h` is present.
+It is always on stderr, never on stdout, so `--format json`, `--page-all`, and binary responses are byte-identical to bare `gws`.
+
+`gw` does not rewrite the suggestion in place.
+The same text also reaches stdout inside structured payloads, for example as `error.message` in the JSON that `gws` emits on an authentication failure, and rewriting that would mean mutating data the caller parses.
+
+Skill files written by `gw <profile> generate-skills` also contain bare `gws` examples.
+Those are files on disk rather than output, so the note does not reach them; translate them when you adopt them.
+
 ## Layout
 
 ```text
@@ -109,7 +142,7 @@ The root honours `$XDG_CONFIG_HOME` and otherwise falls back to `$HOME/.config`.
 - Profile names are validated against `[A-Za-z0-9._-]`, must not be empty, must not start with `-` or `.`, and are capped at 64 characters. `.`, `..`, path separators, absolute paths, and control characters are all rejected, and the resolved directory is checked to be a direct child of the profile root.
 - Profile directories are created `0700`; the `account` file is `0600`.
 - Profile metadata never becomes child environment variables. The only variable `gw` sets is `GOOGLE_WORKSPACE_CLI_CONFIG_DIR`.
-- Identity-bearing `gws` variables inherited from the ambient environment are removed before exec, so an ambient credential cannot leak across the profile boundary: `GOOGLE_WORKSPACE_CLI_CONFIG_DIR`, `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`, `GOOGLE_WORKSPACE_CLI_TOKEN`, `GOOGLE_WORKSPACE_CLI_CLIENT_ID`, `GOOGLE_WORKSPACE_CLI_CLIENT_SECRET`, `GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND`. Other `gws` variables such as logging and sanitisation settings are passed through.
+- Identity-bearing `gws` variables inherited from the ambient environment are removed before the child starts, so an ambient credential cannot leak across the profile boundary: `GOOGLE_WORKSPACE_CLI_CONFIG_DIR`, `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`, `GOOGLE_WORKSPACE_CLI_TOKEN`, `GOOGLE_WORKSPACE_CLI_CLIENT_ID`, `GOOGLE_WORKSPACE_CLI_CLIENT_SECRET`, `GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND`. Other `gws` variables such as logging and sanitisation settings are passed through.
 - Account metadata is sanitised on read and escaped on JSON output, so a tampered `account` file cannot inject terminal escapes or break the JSON.
 - `gw` never has credential material in memory and never prints it.
 
